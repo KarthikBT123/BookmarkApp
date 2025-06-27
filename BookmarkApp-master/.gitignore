@@ -33,3 +33,8 @@ build/
 ### VS Code ###
 .vscode/
 data/bookmarks.mv.db
+
+### Environment Variables ###
+.env
+.env.local
+.env.*.local

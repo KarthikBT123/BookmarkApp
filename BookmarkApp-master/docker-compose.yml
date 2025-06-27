@@ -1,0 +1,18 @@
+﻿version: '3.8'
+
+services:
+  bookmarkapp:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_URL=jdbc:postgresql://db.zuczeqgtzohokksslqge.supabase.co:5432/postgres
+      - DB_USERNAME=postgres  
+      - DB_PASSWORD=332VOcFLI5rxR93f
+    network_mode: "bridge"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    extra_hosts:
+      - "db.zuczeqgtzohokksslqge.supabase.co:host-gateway"
+    restart: unless-stopped

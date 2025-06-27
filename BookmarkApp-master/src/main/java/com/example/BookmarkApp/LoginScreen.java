@@ -19,7 +19,7 @@ import com.vaadin.flow.server.VaadinSession;
 import com.vaadin.flow.spring.annotation.SpringComponent;
 import com.vaadin.flow.spring.annotation.UIScope;
 
-@Route("")
+@Route("/")
 @SpringComponent
 @UIScope
 public class LoginScreen extends VerticalLayout {
