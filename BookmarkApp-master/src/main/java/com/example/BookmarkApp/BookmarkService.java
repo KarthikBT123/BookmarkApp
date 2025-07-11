@@ -31,41 +31,115 @@ public class BookmarkService {
     
     // Get public bookmarks for a specific user - requires Pro/Ultra access
     public List<Bookmark> getPublicBookmarksByUsername(String username) {
-        if (!hasProOrUltraAccess()) {
+        String currentUser = getCurrentUsername();
+        if (currentUser == null) {
             return Collections.emptyList();
         }
+        
+        String plan = oauthService.getPlanForUser(currentUser);
+        int maxUsers = getMaxUsersForPlan(plan);
+        
+        // If unlimited (Ultra plan), allow access
+        if (maxUsers == -1) {
+            return bookmarkRepository.findByUsernameAndSecurityOption(username, "Public");
+        }
+        
+        // Check if this user is within the allowed limit
+        List<String> allowedUsers = bookmarkRepository.findBySecurityOption("Public").stream()
+            .map(Bookmark::getUsername)
+            .distinct()
+            .limit(maxUsers)
+            .toList();
+            
+        if (!allowedUsers.contains(username)) {
+            return Collections.emptyList(); // User not in allowed list
+        }
+        
         return bookmarkRepository.findByUsernameAndSecurityOption(username, "Public");
     }
     
     // Search for users' public bookmarks by username pattern - requires Pro/Ultra access
     public List<Bookmark> searchPublicBookmarksByUsername(String searchTerm) {
-        if (!hasProOrUltraAccess()) {
+        String currentUser = getCurrentUsername();
+        if (currentUser == null) {
             return Collections.emptyList();
         }
-        return bookmarkRepository.findPublicBookmarksByUsernameContaining(searchTerm);
+        
+        String plan = oauthService.getPlanForUser(currentUser);
+        int maxUsers = getMaxUsersForPlan(plan);
+        
+        String escaped = escapeLikeWildcards(searchTerm);
+        String pattern = "%" + escaped.toLowerCase() + "%"; // case-insensitive handled by query LOWER
+        List<Bookmark> searchResults = bookmarkRepository.findPublicBookmarksByUsernameContaining(pattern);
+        
+        // If unlimited (Ultra plan), return all results
+        if (maxUsers == -1) {
+            return searchResults;
+        }
+        
+        // Apply user viewing limits
+        List<String> limitedUsers = searchResults.stream()
+            .map(Bookmark::getUsername)
+            .distinct()
+            .limit(maxUsers)
+            .toList();
+            
+        return searchResults.stream()
+            .filter(bookmark -> limitedUsers.contains(bookmark.getUsername()))
+            .toList();
     }
     
     // Get all public bookmarks - requires Pro/Ultra access
     public List<Bookmark> getAllPublicBookmarks() {
-        if (!hasProOrUltraAccess()) {
+        String username = getCurrentUsername();
+        if (username == null) {
             return Collections.emptyList();
         }
-        return bookmarkRepository.findBySecurityOption("Public");
+        
+        String plan = oauthService.getPlanForUser(username);
+        List<Bookmark> allPublicBookmarks = bookmarkRepository.findBySecurityOption("Public");
+        
+        // Apply user viewing limits based on plan
+        int maxUsers = getMaxUsersForPlan(plan);
+        if (maxUsers == -1) {
+            return allPublicBookmarks; // Unlimited for Ultra
+        }
+        
+        // Get distinct users and limit them
+        List<String> limitedUsers = allPublicBookmarks.stream()
+            .map(Bookmark::getUsername)
+            .distinct()
+            .limit(maxUsers)
+            .toList();
+            
+        // Return bookmarks only from allowed users
+        return allPublicBookmarks.stream()
+            .filter(bookmark -> limitedUsers.contains(bookmark.getUsername()))
+            .toList();
     }
     
-    // Helper method to check if current user has Pro or Ultra access
-    private boolean hasProOrUltraAccess() {
+    private int getMaxUsersForPlan(String plan) {
+        return switch (plan) {
+            case "Free" -> 5;
+            case "Pro" -> 15;
+            case "Ultra" -> -1; // Unlimited
+            default -> 5; // Default to Free limits
+        };
+    }
+    
+    private String getCurrentUsername() {
         try {
-            String username = (String) VaadinSession.getCurrent().getAttribute("username");
-            if (username == null) {
-                return false;
-            }
-            String plan = oauthService.getPlanForUser(username);
-            return "Pro".equals(plan) || "Ultra".equals(plan);
+            return (String) VaadinSession.getCurrent().getAttribute("username");
         } catch (Exception e) {
-            // If there's any issue getting the session or plan, deny access
-            return false;
+            return null;
         }
+    }
+    
+    // Escape % and _ for LIKE queries
+    private String escapeLikeWildcards(String term) {
+        if (term == null) return "";
+        return term.replace("%", "\\%")
+                   .replace("_", "\\_");
     }
 }
 

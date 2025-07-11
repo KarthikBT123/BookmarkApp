@@ -1,4 +1,3 @@
-
 package com.example.BookmarkApp;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +15,7 @@ import com.vaadin.flow.component.orderedlayout.FlexComponent.JustifyContentMode;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.VaadinRequest;
 import com.vaadin.flow.server.VaadinSession;
 import com.vaadin.flow.spring.annotation.SpringComponent;
 import com.vaadin.flow.spring.annotation.UIScope;
@@ -26,10 +26,12 @@ import com.vaadin.flow.spring.annotation.UIScope;
 public class PaymentPlanScreen extends VerticalLayout {
 
     private final OauthService oauthService;
+    private final StripeService stripeService;
 
     @Autowired
-    public PaymentPlanScreen(OauthService oauthService) {
+    public PaymentPlanScreen(OauthService oauthService, StripeService stripeService) {
         this.oauthService = oauthService;
+        this.stripeService = stripeService;
         styleView();
         buildUI();
     }
@@ -78,9 +80,9 @@ public class PaymentPlanScreen extends VerticalLayout {
 
         // Plan cards
         HorizontalLayout cards = new HorizontalLayout(
-                planCard("Free", "Free forever", "• Up to 20 bookmarks\n• Basic organization", null, "#38a169", VaadinIcon.GIFT),
-                planCard("Pro", "$10 / year", "• Up to 50 bookmarks\n• Share bookmarks with others\n• Advanced search", "pro", "#667eea", VaadinIcon.STAR),
-                planCard("Ultra", "$20 / year", "• Unlimited bookmarks\n• All Pro features\n• Priority support\n• Custom categories", "ultra", "#9f7aea", VaadinIcon.DIAMOND));
+                planCard("Free", "Free forever", "• Unlimited bookmarks\n• View up to 5 users' bookmarks\n• Basic organization", null, "#38a169", VaadinIcon.GIFT),
+                planCard("Pro", "$10 / year", "• Unlimited bookmarks\n• View up to 15 users' bookmarks\n• Share bookmarks with others\n• Advanced search", "pro", "#667eea", VaadinIcon.STAR),
+                planCard("Ultra", "$20 / year", "• Unlimited bookmarks\n• View unlimited users' bookmarks\n• All Pro features\n• Priority support\n• Custom categories", "ultra", "#9f7aea", VaadinIcon.DIAMOND));
         
         cards.setSpacing(true);
         cards.setAlignItems(Alignment.STRETCH);
@@ -199,7 +201,24 @@ public class PaymentPlanScreen extends VerticalLayout {
                 }
                 UI.getCurrent().navigate("mainscreen");
             } else {
-                UI.getCurrent().navigate("pay?plan=" + name);
+                try {
+                    // Use custom checkout session with proper redirect URLs
+                    String baseUrl = VaadinRequest.getCurrent().getContextPath().isEmpty() ? 
+                        "http://localhost:8080" : VaadinRequest.getCurrent().getContextPath();
+                    
+                    // Get the actual user's email from the database
+                    String customerEmail = oauthService.getEmailForUser(username);
+                    if (customerEmail == null) {
+                        customerEmail = username + "@example.com"; // Fallback if email not found
+                    }
+                    
+                    String checkoutUrl = stripeService.createCheckoutSession(name, customerEmail, baseUrl, username);
+                    getUI().ifPresent(ui -> ui.getPage().setLocation(checkoutUrl));
+                } catch (Exception ex) {
+                    // Fallback to payment links if custom session creation fails
+                    String paymentLink = stripeService.getPaymentLink(name);
+                    getUI().ifPresent(ui -> ui.getPage().setLocation(paymentLink));
+                }
             }
         });
 

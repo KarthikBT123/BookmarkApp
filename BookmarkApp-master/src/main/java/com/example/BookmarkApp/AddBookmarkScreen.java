@@ -1,4 +1,3 @@
-
 package com.example.BookmarkApp;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -99,7 +98,7 @@ public class AddBookmarkScreen extends VerticalLayout {
         // Form fields with enhanced styling
         TextField urlTextField = new TextField();
         urlTextField.setLabel("Website URL");
-        urlTextField.setPlaceholder("https://example.com");
+        urlTextField.setPlaceholder("https://example.com or www.example.com");
         urlTextField.setPrefixComponent(VaadinIcon.GLOBE.create());
         urlTextField.setClearButtonVisible(true);
         styleFormField(urlTextField, true);
@@ -117,12 +116,29 @@ public class AddBookmarkScreen extends VerticalLayout {
         tags.getStyle().set("width", "100%").set("margin-bottom", "20px");
         styleTextArea(tags);
 
-        TextField categoryField = new TextField();
+        ComboBox<String> categoryField = new ComboBox<>();
         categoryField.setLabel("Category");
-        categoryField.setPlaceholder("e.g. Work, Personal, Research");
+        categoryField.setItems("Work", "Personal", "Education", "Entertainment", "Research", "Other");
+        categoryField.setPlaceholder("Select a category");
         categoryField.setPrefixComponent(VaadinIcon.FOLDER.create());
-        categoryField.setClearButtonVisible(true);
-        styleFormField(categoryField, true);
+        styleComboBox(categoryField);
+
+        TextField customCategoryField = new TextField();
+        customCategoryField.setLabel("Custom Category");
+        customCategoryField.setPlaceholder("Enter your custom category");
+        customCategoryField.setPrefixComponent(VaadinIcon.EDIT.create());
+        customCategoryField.setClearButtonVisible(true);
+        customCategoryField.setVisible(false); // Initially hidden
+        styleFormField(customCategoryField, false);
+        
+        // Show/hide custom category field based on dropdown selection
+        categoryField.addValueChangeListener(event -> {
+            boolean isOther = "Other".equals(event.getValue());
+            customCategoryField.setVisible(isOther);
+            if (!isOther) {
+                customCategoryField.clear();
+            }
+        });
 
         ComboBox<String> security = new ComboBox<>();
         security.setLabel("Privacy Setting");
@@ -162,11 +178,16 @@ public class AddBookmarkScreen extends VerticalLayout {
             String displayName = displayTextField.getValue();
             String tagInput = tags.getValue();
             String favoriteOption = "No";
-            String category = categoryField.getValue();
+            String category;
+            if ("Other".equals(categoryField.getValue())) {
+                category = customCategoryField.getValue();
+            } else {
+                category = categoryField.getValue();
+            }
             String securityOption = security.getValue();
             String username = (String) VaadinSession.getCurrent().getAttribute("username");
             
-            if (url == null || url.trim().isEmpty() || !url.startsWith("http") ||
+            if (url == null || url.trim().isEmpty() || !isValidUrl(url) ||
                     displayName == null || displayName.trim().isEmpty() ||
                     category == null || category.trim().isEmpty() || securityOption == null) {
                 if (!errorShown) {
@@ -199,7 +220,7 @@ public class AddBookmarkScreen extends VerticalLayout {
         buttonLayout.setFlexGrow(1, addBookmark);
 
         VerticalLayout formLayout = new VerticalLayout(
-                urlTextField, displayTextField, tags, categoryField, security, buttonLayout);
+                urlTextField, displayTextField, tags, categoryField, customCategoryField, security, buttonLayout);
         formLayout.setAlignItems(Alignment.CENTER);
         formLayout.setWidthFull();
         formLayout.setPadding(false);
@@ -301,5 +322,13 @@ public class AddBookmarkScreen extends VerticalLayout {
                 label.style.marginBottom = '8px';
             }
         """);
+    }
+
+    private boolean isValidUrl(String url) {
+        if (url == null) return false;
+        String trimmedUrl = url.trim().toLowerCase();
+        return trimmedUrl.startsWith("http://") || 
+               trimmedUrl.startsWith("https://") || 
+               trimmedUrl.startsWith("www.");
     }
 }

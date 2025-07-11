@@ -14,6 +14,7 @@ import com.vaadin.flow.component.contextmenu.MenuItem;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.H1;
+import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.menubar.MenuBar;
@@ -21,6 +22,8 @@ import com.vaadin.flow.component.menubar.MenuBarVariant;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.tabs.Tab;
+import com.vaadin.flow.component.tabs.Tabs;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.provider.ListDataProvider;
 import com.vaadin.flow.data.renderer.ComponentRenderer;
@@ -47,6 +50,12 @@ public class MainScreen extends VerticalLayout {
     private TextField userSearchField;
     private Button searchUsersButton;
     private String currentUserPlan = "";
+    
+    // Tabs for bookmark views
+    private Tabs bookmarkTabs;
+    private Tab yourBookmarksTab;
+    private Tab publicBookmarksTab;
+    private boolean showingPublicBookmarks = false;
     
     @Autowired
     public MainScreen(BookmarkService bookmarkService, OauthService oauthService) {
@@ -85,6 +94,7 @@ public class MainScreen extends VerticalLayout {
 
         setupStaticUI();
         setupDynamicSearchBar();
+        setupTabs();
         refreshUserInterface();
         refreshGrid();
         populateCategoryOptions();
@@ -101,6 +111,23 @@ public class MainScreen extends VerticalLayout {
 
         // Grid columns with enhanced styling
         grid.addColumn(new ComponentRenderer<>(bookmark -> {
+            String currentUsername = (String) VaadinSession.getCurrent().getAttribute("username");
+            boolean isOwnBookmark = bookmark.getUsername().equals(currentUsername);
+            
+            // Only show privacy toggle for personal bookmarks
+            if (showingPublicBookmarks) {
+                return new Span(); // Empty for public bookmarks since we have dedicated User column
+            }
+            
+            // Only allow privacy changes for own bookmarks
+            if (!isOwnBookmark) {
+                Icon readOnlyIcon = "Public".equals(bookmark.getSecurityOption())
+                        ? VaadinIcon.EYE.create()
+                        : VaadinIcon.EYE_SLASH.create();
+                readOnlyIcon.setColor("#9ca3af"); // Gray color for read-only
+                return readOnlyIcon;
+            }
+            
             Icon icon = "Public".equals(bookmark.getSecurityOption())
                     ? VaadinIcon.EYE.create()
                     : VaadinIcon.EYE_SLASH.create();
@@ -131,12 +158,39 @@ public class MainScreen extends VerticalLayout {
             return link;
         })).setHeader("Bookmark").setFlexGrow(1);
 
+        // User column - only visible in public bookmarks tab
         grid.addColumn(new ComponentRenderer<>(bookmark -> {
+            if (!showingPublicBookmarks) {
+                return new Span(); // Empty for personal bookmarks tab
+            }
+            
+            Span userSpan = new Span("@" + bookmark.getUsername());
+            userSpan.getStyle()
+                .set("color", "#9f7aea")
+                .set("font-weight", "600")
+                .set("font-size", "14px")
+                .set("background", "rgba(159, 122, 234, 0.1)")
+                .set("padding", "4px 8px")
+                .set("border-radius", "8px");
+            return userSpan;
+        })).setHeader("User").setWidth("150px").setFlexGrow(0);
+
+        grid.addColumn(new ComponentRenderer<>(bookmark -> {
+            String currentUsername = (String) VaadinSession.getCurrent().getAttribute("username");
+            boolean isOwnBookmark = bookmark.getUsername().equals(currentUsername);
+            
             Icon icon = "Yes".equals(bookmark.getFavoriteOption())
                     ? VaadinIcon.STAR.create()
                     : VaadinIcon.STAR_O.create();
             icon.setColor("#fbbf24");
             icon.setSize("20px");
+            
+            // Only allow interaction with own bookmarks or when not in public view
+            if (showingPublicBookmarks && !isOwnBookmark) {
+                // Read-only icon for other users' bookmarks
+                return icon;
+            }
+            
             Button button = new Button(icon, click -> {
                 bookmark.setFavoriteOption("Yes".equals(bookmark.getFavoriteOption()) ? "No" : "Yes");
                 bookmarkService.addBookmark(bookmark);
@@ -147,6 +201,12 @@ public class MainScreen extends VerticalLayout {
         })).setHeader("Favorite").setWidth("120px").setFlexGrow(0);
 
         grid.addColumn(new ComponentRenderer<>(bookmark -> {
+            // Only show edit button for user's own bookmarks
+            String currentUsername = (String) VaadinSession.getCurrent().getAttribute("username");
+            if (showingPublicBookmarks && !bookmark.getUsername().equals(currentUsername)) {
+                return new Span(); // Empty span for other users' bookmarks
+            }
+            
             Button editButton = new Button(new Icon(VaadinIcon.EDIT), click -> {
                 UI.getCurrent().navigate("Edit-Bookmark-Screen");
             });
@@ -228,7 +288,7 @@ public class MainScreen extends VerticalLayout {
     private void setupDynamicSearchBar() {
         // Create basic search components
         searchField = new TextField();
-        searchField.setPlaceholder("Search your bookmarks...");
+        searchField.setPlaceholder("Search by bookmark name...");
         searchField.setClearButtonVisible(true);
         searchField.setWidth("400px");
         searchField.setPrefixComponent(new Icon(VaadinIcon.SEARCH));
@@ -245,13 +305,13 @@ public class MainScreen extends VerticalLayout {
 
         // Create premium search components
         userSearchField = new TextField();
-        userSearchField.setPlaceholder("Search users...");
+        userSearchField.setPlaceholder("Search by tags...");
         userSearchField.setClearButtonVisible(true);
         userSearchField.setWidth("300px");
-        userSearchField.setPrefixComponent(new Icon(VaadinIcon.USERS));
+        userSearchField.setPrefixComponent(new Icon(VaadinIcon.TAGS));
         styleSearchField(userSearchField);
         
-        searchUsersButton = new Button("Search Users", VaadinIcon.SEARCH.create());
+        searchUsersButton = new Button("Search Tags", VaadinIcon.SEARCH.create());
         searchUsersButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         searchUsersButton.getStyle()
             .set("background", "linear-gradient(135deg, #9f7aea 0%, #805ad5 100%)")
@@ -264,11 +324,15 @@ public class MainScreen extends VerticalLayout {
             .set("border", "none");
         
         searchUsersButton.addClickListener(e -> {
-            String searchTerm = userSearchField.getValue();
-            if (searchTerm != null && !searchTerm.trim().isEmpty()) {
-                UI.getCurrent().navigate("user-bookmarks?search=" + searchTerm.trim());
-            }
+            applyTagsFilter(userSearchField.getValue());
         });
+
+        // Add Enter key listener to tags search field
+        userSearchField.getElement().addEventListener("keydown", event -> {
+            if ("Enter".equals(event.getEventData().getString("event.key"))) {
+                applyTagsFilter(userSearchField.getValue());
+            }
+        }).addEventData("event.key");
 
         // Create search bar container
         searchBar = new HorizontalLayout();
@@ -283,18 +347,16 @@ public class MainScreen extends VerticalLayout {
     }
     
     private void updateSearchBarComponents() {
-        // Remove all components from search bar
+        if (searchBar == null) {
+            return; // Exit early if searchBar hasn't been initialized yet
+        }
         searchBar.removeAll();
         
         String username = (String) VaadinSession.getCurrent().getAttribute("username");
         String plan = oauthService.getPlanForUser(username);
         
-        // Add components based on current plan
-        if ("Pro".equals(plan) || "Ultra".equals(plan)) {
-            searchBar.add(userSearchField, searchUsersButton, searchField, categoryFilter);
-        } else {
-            searchBar.add(searchField, categoryFilter);
-        }
+        // Add search components - tags search available to all users
+        searchBar.add(userSearchField, searchUsersButton, searchField, categoryFilter);
     }
     
     public void refreshUserInterface() {
@@ -315,6 +377,11 @@ public class MainScreen extends VerticalLayout {
         // Make sure search bar is added to the layout if it's not already
         if (!getChildren().anyMatch(component -> component == searchBar)) {
             addComponentAtIndex(1, searchBar); // Add after topBar
+        }
+        
+        // Add tabs if not already present
+        if (!getChildren().anyMatch(component -> component == bookmarkTabs)) {
+            addComponentAtIndex(2, bookmarkTabs); // Add after searchBar
         }
         
         // Add grid if not already present
@@ -384,14 +451,18 @@ public class MainScreen extends VerticalLayout {
 
     private void applyFilters(String searchTerm, String category) {
         String currentUsername = (String) VaadinSession.getCurrent().getAttribute("username");
-        List<Bookmark> bookmarks = bookmarkService.getBookmarksByUsername(currentUsername);
+        List<Bookmark> bookmarks;
+        
+        if (showingPublicBookmarks) {
+            bookmarks = bookmarkService.getAllPublicBookmarks();
+        } else {
+            bookmarks = bookmarkService.getBookmarksByUsername(currentUsername);
+        }
 
         if (searchTerm != null && !searchTerm.trim().isEmpty()) {
             String lower = searchTerm.toLowerCase();
             bookmarks = bookmarks.stream().filter(b ->
-                    b.getDisplayName().toLowerCase().contains(lower) ||
-                    b.getUrl().toLowerCase().contains(lower) ||
-                    b.getTagsInput().toLowerCase().contains(lower))
+                    b.getDisplayName().toLowerCase().contains(lower))
                     .toList();
         }
 
@@ -419,7 +490,15 @@ public class MainScreen extends VerticalLayout {
     public void refreshGrid() {
         String currentUsername = (String) VaadinSession.getCurrent().getAttribute("username");
         
-        List<Bookmark> bookmarks = Objects.requireNonNullElse(bookmarkService.getBookmarksByUsername(currentUsername), new ArrayList<>());
+        List<Bookmark> bookmarks;
+        
+        if (showingPublicBookmarks) {
+            // Show all public bookmarks from all users
+            bookmarks = Objects.requireNonNullElse(bookmarkService.getAllPublicBookmarks(), new ArrayList<>());
+        } else {
+            // Show user's own bookmarks
+            bookmarks = Objects.requireNonNullElse(bookmarkService.getBookmarksByUsername(currentUsername), new ArrayList<>());
+        }
         
         dataProvider.getItems().clear();
         dataProvider.getItems().addAll(sortBookmarks(bookmarks));
@@ -484,5 +563,45 @@ public class MainScreen extends VerticalLayout {
                 window.planChangeInterval = null;
             }
         """);
+    }
+
+    private void setupTabs() {
+        // Create tabs
+        yourBookmarksTab = new Tab(new Span("📚 Your Bookmarks"));
+        publicBookmarksTab = new Tab(new Span("🌍 All Public Bookmarks"));
+        
+        bookmarkTabs = new Tabs(yourBookmarksTab, publicBookmarksTab);
+        bookmarkTabs.setSelectedTab(yourBookmarksTab);
+        
+        // Style the tabs
+        bookmarkTabs.getStyle()
+            .set("margin-bottom", "16px")
+            .set("background", "rgba(248, 250, 252, 0.9)")
+            .set("border-radius", "12px")
+            .set("padding", "8px")
+            .set("box-shadow", "0 2px 8px rgba(0,0,0,0.05)");
+        
+        // Add tab selection listener
+        bookmarkTabs.addSelectedChangeListener(event -> {
+            Tab selectedTab = event.getSelectedTab();
+            showingPublicBookmarks = selectedTab == publicBookmarksTab;
+            refreshGrid();
+        });
+    }
+
+    private void applyTagsFilter(String tags) {
+        String currentUsername = (String) VaadinSession.getCurrent().getAttribute("username");
+        List<Bookmark> bookmarks = bookmarkService.getBookmarksByUsername(currentUsername);
+
+        if (tags != null && !tags.trim().isEmpty()) {
+            String lower = tags.toLowerCase();
+            bookmarks = bookmarks.stream()
+                    .filter(b -> b.getTagsInput().toLowerCase().contains(lower))
+                    .toList();
+        }
+
+        dataProvider.getItems().clear();
+        dataProvider.getItems().addAll(sortBookmarks(bookmarks));
+        dataProvider.refreshAll();
     }
 }

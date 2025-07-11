@@ -8,6 +8,4 @@ public interface OauthRepository extends JpaRepository<OauthUser, Long> {
     Optional<OauthUser> findByEmail(String email);
 
     Optional<OauthUser> findByUsername(String username);
-
-    Optional<OauthUser> findByUsernameAndPassword(String username, String password);
 }

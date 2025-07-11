@@ -17,7 +17,7 @@ public interface BookmarkRepository extends JpaRepository <Bookmark, Long>{
     // Find all public bookmarks
     List<Bookmark> findBySecurityOption(String securityOption);
     
-    // Find public bookmarks by username containing search term
-    @Query("SELECT b FROM Bookmark b WHERE b.username LIKE %:searchTerm% AND b.securityOption = 'Public'")
+    // Find public bookmarks by username containing search term (case-insensitive)
+    @Query("SELECT b FROM Bookmark b WHERE LOWER(b.username) LIKE LOWER(CONCAT('%', :searchTerm, '%')) AND b.securityOption = 'Public'")
     List<Bookmark> findPublicBookmarksByUsernameContaining(@Param("searchTerm") String searchTerm);
 }

@@ -1,4 +1,3 @@
-
 package com.example.BookmarkApp;
 
 import java.util.List;
@@ -151,6 +150,7 @@ public class EditBookmarkScreen extends VerticalLayout {
             bookmarkToEdit.setDisplayName(nameField.getValue());
             bookmarkToEdit.setUrl(urlField.getValue());
             bookmarkToEdit.setTagsInput(tagsField.getValue());
+            
             bookmarkRepository.save(bookmarkToEdit);
             mainScreen.refreshGrid();
             Notification.show("Bookmark updated successfully", 3000, Notification.Position.MIDDLE);
